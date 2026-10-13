@@ -41,7 +41,15 @@ VIDEO_EXTS = (
     ".mpg", ".mpeg", ".ogv", ".flv", ".wmv", ".ts",
     ".m2ts", ".mts", ".3gp",
 )
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif")
 MIME_OVERRIDES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".bmp": "image/bmp",
+    ".avif": "image/avif",
     ".mkv": "video/x-matroska",
     ".m2ts": "video/mp2t",
     ".mts": "video/mp2t",
@@ -458,10 +466,9 @@ class Api:
     - get_startup / get_pending_open: package startup and forwarded paths.
     - toggle_fullscreen: public Window.toggle_fullscreen plus a fullscreen
       gap guard (over-cover + black chrome) marshalled to the UI thread.
-    - pick_files / pick_folder: native Windows file dialogs via
-      Window.create_file_dialog (reliable, works without a user-gesture
-      restriction, so the app can auto-open the chooser on launch).
-      The HTML <input type=file> pickers remain as a browser fallback.
+    - pick_files / pick_photo / pick_folder: native Windows file dialogs via
+      Window.create_file_dialog. The HTML <input type=file> pickers remain as
+      a browser fallback.
     """
 
     def __init__(self):
@@ -566,6 +573,29 @@ class Api:
                         idx = 0
                 return self._pack(sibs, idx)
         return self._pack(sorted(vids, key=lambda p: p.name.lower()), 0)
+
+    def pick_photo(self):
+        """Pick one original photo and serve it without modifying its bytes."""
+        try:
+            wins = webview.windows
+            if not wins:
+                return None
+            file_types = (
+                "Image files (*.jpg;*.jpeg;*.png;*.webp;*.gif;*.bmp;*.avif)",
+                "All files (*.*)",
+            )
+            result = wins[0].create_file_dialog(
+                webview.FileDialog.OPEN, allow_multiple=False, file_types=file_types
+            )
+        except Exception:
+            return None
+        paths = _normalize_dialog_result(result)
+        if not paths:
+            return None  # user cancelled
+        photos = [p for p in paths if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+        if not photos:
+            return {"urls": [], "names": [], "index": 0, "error": "no-photos"}
+        return self._pack(photos[:1], 0)
 
     def pick_folder(self):
         """Native Open-folder dialog. Returns packed http urls or None.

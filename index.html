@@ -68,7 +68,11 @@
   body.ui-hidden #showUiFab { transform:translateX(-50%) translateY(0); opacity:1; pointer-events:auto; }
   body.ui-hidden.fs-idle #showUiFab { opacity:1 !important; pointer-events:auto !important; transform:translateX(-50%) translateY(0) !important; }
   .frame { width:100%; height:100%; flex:1; overflow:hidden; background:#000; border:0; outline:0; line-height:0; font-size:0; margin:0; padding:0; }
-  .col video { width:calc(100% + 4px); height:calc(100% + 4px); margin:-2px 0 0 -2px; object-fit:cover; object-position:center center; display:block; background:#000; border:0; outline:0; vertical-align:top; padding:0; box-shadow:none; }
+  .col video, .col img { width:calc(100% + 4px); height:calc(100% + 4px); margin:-2px 0 0 -2px; object-fit:cover; object-position:center center; display:block; background:#000; border:0; outline:0; vertical-align:top; padding:0; box-shadow:none; image-rendering:auto; }
+  .col img { display:none; }
+  body.photo-mode .col video { display:none; }
+  body.photo-mode .col img { display:block; }
+
   body.single-mode #stage { gap:0; padding:0; }
   body.single-mode #stage .col:not(:first-child) { display:none; }
   body.single-mode #stage .col:first-child { flex:1 1 100%; border:0; border-radius:0; }
@@ -77,6 +81,10 @@
   #controls { flex:0 0 auto; position:relative; z-index:20; margin:0; background:#1b1c1f; border:0; border-top:1px solid #3a3c40; border-radius:0; padding:9px 14px 8px; display:grid; gap:7px; transition:transform .25s ease, opacity .3s ease; font-family:var(--font); }
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-family:var(--font); }
   .transport-row { display:grid; grid-template-columns:auto minmax(180px,1fr) minmax(100px,min(24vw,300px)); gap:14px; }
+  body.photo-mode #playBtn, body.photo-mode .video-only { display:none; }
+  body.photo-mode .transport-actions, body.photo-mode #seekWrap { display:none; }
+  body.photo-mode .transport-row { grid-template-columns:minmax(0,1fr); }
+  body.photo-mode #nowPlaying { text-align:left; }
   .transport-actions { display:flex; align-items:center; gap:5px; }
   #playBtn2, #prevBtn, #nextBtn, #backBtn, #fwdBtn { min-width:34px; height:34px; text-align:center; padding:0 9px; }
   #playBtn2 { min-width:42px; background:#33353a; border-color:#55575c; color:#fff; font-size:13px; }
@@ -108,14 +116,14 @@
   body.ui-hidden header { position:absolute; top:0; left:0; right:0; transform:translateY(-110%); }
   body.ui-hidden #controls { position:absolute; bottom:0; left:0; right:0; transform:translateY(110%); }
   body.fs-idle header, body.fs-idle #controls { opacity:0; pointer-events:none; }
-  body.is-fs, body.is-fs main, body.is-fs #stage, body.is-fs .col, body.is-fs .frame, body.is-fs .col video { background:#000; border:0; outline:0; }
+  body.is-fs, body.is-fs main, body.is-fs #stage, body.is-fs .col, body.is-fs .frame, body.is-fs .col video, body.is-fs .col img { background:#000; border:0; outline:0; }
   body.is-fs main { position:fixed; inset:0; overflow:hidden; }
   body.is-fs header { position:fixed; top:0; left:0; right:0; background:rgba(22,23,26,.92); border:0; }
   body.is-fs #controls { position:fixed; bottom:0; left:0; right:0; background:rgba(22,23,26,.92); border:0; }
   body.is-fs #stage { position:fixed; inset:-3px; width:auto; height:auto; padding:0; gap:0; }
   body.is-fs .col { border-radius:0; }
   body.is-fs .col + .col { margin-left:-2px; }
-  :fullscreen, :fullscreen #stage, :fullscreen .col, :fullscreen .frame, :fullscreen video { background:#000 !important; border:0 !important; outline:0 !important; }
+  :fullscreen, :fullscreen #stage, :fullscreen .col, :fullscreen .frame, :fullscreen video, :fullscreen img { background:#000 !important; border:0 !important; outline:0 !important; }
   :fullscreen #stage { position:fixed; inset:-3px; width:auto; height:auto; padding:0; gap:0; }
   :fullscreen header { position:fixed; top:0; left:0; right:0; }
   :fullscreen #controls { position:fixed; bottom:0; left:0; right:0; }
@@ -167,13 +175,15 @@
   <div class="toolbar" aria-label="Player tools">
     <div class="toolbar-group">
       <button id="openFileBtn" title="Pick video file(s) — plays one after another"><span class="button-icon" aria-hidden="true">▣</span> Open video</button>
+      <button id="openPhotoBtn" title="Open one photo across all three columns; source file is not re-encoded"><span class="button-icon" aria-hidden="true">▧</span> Open photo</button>
       <button id="openFolderBtn" title="Choose a folder to queue all videos inside it, including subfolders."><span class="button-icon" aria-hidden="true">▱</span> Open folder</button>
       <input id="file" type="file" accept="video/*" multiple hidden />
+      <input id="photoFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/avif" hidden />
       <input id="folderInput" type="file" webkitdirectory multiple hidden />
     </div>
     <span class="toolbar-divider" role="separator"></span>
     <div class="toolbar-group">
-      <button id="playBtn" class="primary" disabled>▶ Play</button>
+      <button id="playBtn" class="primary video-only" disabled>▶ Play</button>
     </div>
     <span class="toolbar-divider" role="separator"></span>
     <div class="toolbar-group">
@@ -183,7 +193,7 @@
           <option value="contain">Full frame</option>
         </select>
       </label>
-      <label class="select-control" title="Playback speed">Speed
+      <label class="select-control video-only" title="Playback speed">Speed
         <select id="speedSel">
           <option value="0.5">0.5×</option>
           <option value="1" selected>1×</option>
@@ -191,7 +201,7 @@
           <option value="2">2×</option>
         </select>
       </label>
-      <label class="chk" title="Loop ON = repeat the same video · Loop OFF = play queue once">
+      <label class="chk video-only" title="Loop ON = repeat the same video · Loop OFF = play queue once">
         <input type="checkbox" id="loopChk" checked /> Loop
       </label>
     </div>
@@ -210,7 +220,7 @@
   <div id="stage">
     <div class="col" data-col="0">
       <span class="tag">COL 1 · master 🔊</span>
-      <div class="frame"><video id="v0" playsinline preload="auto"></video></div>
+      <div class="frame"><video id="v0" playsinline preload="auto"></video><img id="i0" alt="" draggable="false" /></div>
       <div class="mini">
         <label>Zoom <input type="range" id="z0" min="1" max="3" step="0.01" value="1"></label>
         <label>Pan X <input type="range" id="x0" min="-50" max="50" step="1" value="0"></label>
@@ -220,7 +230,7 @@
     </div>
     <div class="col" data-col="1">
       <span class="tag">COL 2 · synced</span>
-      <div class="frame"><video id="v1" playsinline preload="auto" muted></video></div>
+      <div class="frame"><video id="v1" playsinline preload="auto" muted></video><img id="i1" alt="" draggable="false" /></div>
       <div class="mini">
         <label>Zoom <input type="range" id="z1" min="1" max="3" step="0.01" value="1"></label>
         <label>Pan X <input type="range" id="x1" min="-50" max="50" step="1" value="0"></label>
@@ -230,7 +240,7 @@
     </div>
     <div class="col" data-col="2">
       <span class="tag">COL 3 · synced</span>
-      <div class="frame"><video id="v2" playsinline preload="auto" muted></video></div>
+      <div class="frame"><video id="v2" playsinline preload="auto" muted></video><img id="i2" alt="" draggable="false" /></div>
       <div class="mini">
         <label>Zoom <input type="range" id="z2" min="1" max="3" step="0.01" value="1"></label>
         <label>Pan X <input type="range" id="x2" min="-50" max="50" step="1" value="0"></label>
@@ -247,12 +257,13 @@
         <span class="preview-pane"></span><span class="preview-pane"></span><span class="preview-pane"></span>
       </div>
       <div class="empty-title">Your three-screen player is ready</div>
-      <div class="empty-sub">Open a video to watch it across three synchronized views, or choose a folder to queue your videos.</div>
+      <div class="empty-sub">Open a video to watch it across three synchronized views, or open one photo to display the same original in all three columns.</div>
       <div class="empty-actions">
         <button id="emptyOpenFileBtn" class="primary" type="button">Open video</button>
+        <button id="emptyOpenPhotoBtn" type="button">Open photo</button>
         <button id="emptyOpenFolderBtn" type="button">Open folder</button>
       </div>
-      <div class="empty-hint">Tip: press F for fullscreen · drop a video here to play</div>
+      <div class="empty-hint">Tip: press F for fullscreen · drop a video or photo here to open</div>
     </div>
   </div>
   <div id="toast"></div>
@@ -297,8 +308,10 @@
   //  - GridPlayer play_all / pause_all / seek_all  -> playAll()/pauseAll()/seek broadcast below
   //  - GridPlayer crop dialog                      -> per-column Zoom/Pan (scale + transform-origin)
   const vids = [document.getElementById('v0'), document.getElementById('v1'), document.getElementById('v2')];
+  const imgs = [document.getElementById('i0'), document.getElementById('i1'), document.getElementById('i2')];
   const master = vids[0];
   const fileInput = document.getElementById('file');
+  const photoFileInput = document.getElementById('photoFile');
   const playBtn = document.getElementById('playBtn');
   const playBtn2 = document.getElementById('playBtn2');
   const syncBtn = document.getElementById('syncBtn');
@@ -313,6 +326,7 @@
   const fsBtn = document.getElementById('fsBtn');
   const stage = document.getElementById('stage');
   const openFileBtn = document.getElementById('openFileBtn');
+  const openPhotoBtn = document.getElementById('openPhotoBtn');
   const openFolderBtn = document.getElementById('openFolderBtn');
   const prevBtn = document.getElementById('prevBtn');
   const nextBtn = document.getElementById('nextBtn');
@@ -322,7 +336,7 @@
   const modeBadge = document.getElementById('modeBadge');
   const toastEl = document.getElementById('toast');
   let objectUrl = null, seeking = false, loaded = false;
-  let blobUrls = [];
+  let blobUrls = [], photoBlobUrl = null, imageMode = false;
   let playlist = [], playNames = [], pIndex = 0;
 
   function toast(msg, ms) {
@@ -344,7 +358,7 @@
     // Fit-only display adjustment. Sources, timestamps, playback rates,
     // decoders and crop transforms are untouched by switching layouts.
     const fit = single ? 'contain' : fitSel.value;
-    vids.forEach(v => { v.style.objectFit = fit; });
+    vids.concat(imgs).forEach(el => { el.style.objectFit = fit; });
   }
   mode3vcBtn.addEventListener('click', () => setPlayerMode('3vc'));
   modeSingleBtn.addEventListener('click', () => setPlayerMode('single'));
@@ -359,15 +373,16 @@
     const z = parseFloat(document.getElementById('z'+i).value);
     const x = parseFloat(document.getElementById('x'+i).value);
     const y = parseFloat(document.getElementById('y'+i).value);
-    if (z === 1 && x === 0 && y === 0) {
-      // Default view: no CSS transform at all, so the frame is rendered
-      // pixel-for-pixel with zero resampling/softening (original quality).
-      vids[i].style.transform = '';
-      vids[i].style.transformOrigin = '';
-    } else {
-      vids[i].style.transform = `scale(${z})`;
-      vids[i].style.transformOrigin = `${50 + x}% ${50 + y}%`;
-    }
+    [vids[i], imgs[i]].forEach(el => {
+      if (z === 1 && x === 0 && y === 0) {
+        // Default view: no CSS transform is applied to either source.
+        el.style.transform = '';
+        el.style.transformOrigin = '';
+      } else {
+        el.style.transform = `scale(${z})`;
+        el.style.transformOrigin = `${50 + x}% ${50 + y}%`;
+      }
+    });
   }
   function mirrorCrop(from) {
     // 🔗 linked mode: any slider move copies to the other 2 columns -> identical side-by-side
@@ -429,9 +444,59 @@
     v.style.opacity = '';
   });
 
+  function clearPhotoView() {
+    imageMode = false;
+    document.body.classList.remove('photo-mode');
+    imgs.forEach(img => {
+      img.onload = null;
+      img.onerror = null;
+      img.removeAttribute('src');
+    });
+    if (photoBlobUrl) {
+      try { URL.revokeObjectURL(photoBlobUrl); } catch(e) {}
+      photoBlobUrl = null;
+    }
+  }
+  function loadPhotoUrl(url, name, ownedBlobUrl) {
+    blobUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch(e){} });
+    blobUrls = [];
+    if (objectUrl) { try { URL.revokeObjectURL(objectUrl); } catch(e){} }
+    objectUrl = null;
+    clearPhotoView();
+    vids.forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); });
+    playlist = []; playNames = []; pIndex = 0;
+    updatePrevNext();
+    imageMode = true;
+    loaded = false;
+    if (ownedBlobUrl) photoBlobUrl = ownedBlobUrl;
+    document.body.classList.add('photo-mode');
+    playBtn.disabled = true;
+    syncBtn.disabled = true;
+    seek.disabled = true;
+    seek.value = 0;
+    timeEl.textContent = 'Still image';
+    nowPlaying.textContent = name || 'Photo';
+    syncState.textContent = 'Loading original photo…';
+    document.getElementById('drop').classList.add('hide');
+    const fit = document.body.classList.contains('single-mode') ? 'contain' : fitSel.value;
+    imgs.forEach((img, i) => {
+      img.style.objectFit = fit;
+      img.onerror = () => {
+        if (imageMode && i === 0 && img.getAttribute('src') === url)
+          toast('Could not open this photo. Try JPEG, PNG, WebP, GIF, BMP, or AVIF.', 6000);
+      };
+      img.onload = () => {
+        if (imageMode && i === 0 && img.getAttribute('src') === url)
+          syncState.textContent = `${name || 'Photo'} · ${img.naturalWidth} × ${img.naturalHeight} px · original file`;
+      };
+      img.src = url;
+    });
+  }
   function loadUrl(url, name) {
+    clearPhotoView();
     vids.forEach(v => { v.src = url; v.load(); });
     loaded = true;
+    seek.disabled = false;
     playBtn.disabled = syncBtn.disabled = false;
     document.getElementById('drop').classList.add('hide');
     nowPlaying.textContent = playlist.length > 1 ? `${pIndex + 1}/${playlist.length} · ${name || ''}` : (name || '');
@@ -475,10 +540,24 @@
   function appApi() { return (window.pywebview && window.pywebview.api) || null; }
   const folderInput = document.getElementById('folderInput');
   const VIDEO_EXTS = ['mp4','m4v','webm','mov','mkv','avi','mpg','mpeg','ogv','flv','wmv','ts','m2ts','mts','3gp'];
+  const PHOTO_EXTS = ['jpg','jpeg','png','webp','gif','bmp','avif'];
   const isVideoFile = f => {
     const n = (f.name || '').toLowerCase();
     return VIDEO_EXTS.some(e => n.endsWith('.' + e));
   };
+  const isPhotoFile = f => {
+    const n = (f.name || '').toLowerCase();
+    return PHOTO_EXTS.some(e => n.endsWith('.' + e));
+  };
+  function openPhotoFile(file) {
+    if (!file) return;
+    if (!isPhotoFile(file)) {
+      toast('Unsupported photo format. Use JPEG, PNG, WebP, GIF, BMP, or AVIF.', 5000);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    loadPhotoUrl(url, file.name, url);
+  }
   function queueFiles(files, labelKey) {
     const vids = files.filter(isVideoFile);
     if (!vids.length) { toast('No playable video files there. Best: MP4 / WebM / MOV.', 4000); return; }
@@ -515,6 +594,23 @@
     }
     fileInput.click();
   }
+  async function openPhotoPicker() {
+    const api = appApi();
+    if (api && api.pick_photo) {
+      try {
+        const r = await api.pick_photo();
+        if (r && r.urls && r.urls.length) {
+          loadPhotoUrl(r.urls[0], r.names[0] || 'Photo');
+          return;
+        }
+        if (r && r.error === 'no-photos') {
+          toast('Choose a JPEG, PNG, WebP, GIF, BMP, or AVIF photo.', 5000);
+        }
+        return; // native picker cancelled or contained no supported photo
+      } catch(e) {}
+    }
+    photoFileInput.click();
+  }
   async function openFolderPicker() {
     if (supportsDirPick()) {
       try { folderInput.click(); return; } catch(err) {}
@@ -538,8 +634,10 @@
     toast('Folder picking is not supported here — select video files instead.', 4000);
   }
   openFileBtn.onclick = openFilePicker;
+  openPhotoBtn.onclick = openPhotoPicker;
   openFolderBtn.onclick = openFolderPicker;
   document.getElementById('emptyOpenFileBtn').onclick = openFilePicker;
+  document.getElementById('emptyOpenPhotoBtn').onclick = openPhotoPicker;
   document.getElementById('emptyOpenFolderBtn').onclick = openFolderPicker;
   folderInput.addEventListener('change', e => {
     if (e.target.files.length) queueFiles(Array.from(e.target.files), 'webkitRelativePath');
@@ -578,13 +676,25 @@
     if (e.target.files.length) queueFiles(Array.from(e.target.files), 'name');
     fileInput.value = '';
   });
+  photoFileInput.addEventListener('change', e => {
+    if (e.target.files.length) openPhotoFile(e.target.files[0]);
+    photoFileInput.value = '';
+  });
   // Drag-and-drop still works silently in the background, but it is no longer
   // advertised — the empty screen is a normal player-style Open screen.
   window.addEventListener('dragover', e => { e.preventDefault(); });
   window.addEventListener('drop', e => {
     e.preventDefault();
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-      queueFiles(Array.from(e.dataTransfer.files), 'name');
+    if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+    const dropped = Array.from(e.dataTransfer.files);
+    if (dropped.some(isVideoFile)) {
+      queueFiles(dropped, 'name');
+      return;
+    }
+    const photos = dropped.filter(isPhotoFile);
+    if (photos.length) {
+      openPhotoFile(photos[0]);
+      if (photos.length > 1) toast('Showing the first dropped photo. Open another photo to replace it.', 4000);
     }
   });
 
@@ -718,7 +828,7 @@
   });
   seek.addEventListener('change', () => { seeking = false; hardSync(); });
 
-  fitSel.addEventListener('change', () => vids.forEach(v => v.style.objectFit = fitSel.value));
+  fitSel.addEventListener('change', () => vids.concat(imgs).forEach(el => el.style.objectFit = fitSel.value));
   speedSel.addEventListener('change', () => {
     const r = parseFloat(speedSel.value) || 1;
     master.playbackRate = r;
