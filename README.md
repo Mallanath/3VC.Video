@@ -34,6 +34,8 @@ Output: `dist\TripleVerticalPlayer.exe` (no install needed, Windows 10/11).
 | Button / key | What it does |
 |---|---|
 | Open video(s) | Pick file(s) — a single file queues its whole folder |
+| Open photo | Show one original photo in all three columns, using the video Fit setting |
+| Open photo folder | Browse photos in the folder and its subfolders with Prev / Next or N / P |
 | Open folder | Every video in the folder plays continuously |
 | Play (Space) | Play / pause all 3 panes |
 | Sync | Force-resync slaves to master |
@@ -43,5 +45,7 @@ Output: `dist\TripleVerticalPlayer.exe` (no install needed, Windows 10/11).
 | Prev / Next (P / N) | Step through the queue |
 | Loop | ON = repeat the same video · OFF = play queue once |
 
-Quality is lossless — original file bytes are streamed as-is, and at 1× zoom
-no CSS transform is applied, so frames render pixel-for-pixel.
+Photos and videos are loaded from their original files without re-encoding.
+In 3VC mode, photos appear in all three columns and use the same Fit setting as
+videos (Fill by default). Choose Full frame to keep the entire photo visible;
+rendered size follows the pane and monitor resolution.

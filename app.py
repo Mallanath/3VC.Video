@@ -251,6 +251,37 @@ def video_files_in(folder: pathlib.Path, recursive=True):
     return sorted(vids, key=_key)
 
 
+def photo_files_in(folder: pathlib.Path, recursive=True):
+    """All supported original photos in a folder, including subfolders."""
+    try:
+        folder = pathlib.Path(folder)
+        if not folder.is_dir():
+            return []
+        entries = folder.rglob("*") if recursive else folder.iterdir()
+    except OSError:
+        return []
+    photos = []
+    try:
+        for path in entries:
+            try:
+                if path.is_file() and path.suffix.lower() in IMAGE_EXTS:
+                    photos.append(path)
+            except OSError:
+                continue
+    except OSError:
+        pass
+    try:
+        base = folder.resolve()
+    except OSError:
+        base = folder
+    def _key(path):
+        try:
+            return path.relative_to(base).as_posix().casefold()
+        except ValueError:
+            return path.name.casefold()
+    return sorted(photos, key=_key)
+
+
 class VideoHandler(BaseHTTPRequestHandler):
     server_version = "TripleWall/1.0"
 
@@ -466,9 +497,9 @@ class Api:
     - get_startup / get_pending_open: package startup and forwarded paths.
     - toggle_fullscreen: public Window.toggle_fullscreen plus a fullscreen
       gap guard (over-cover + black chrome) marshalled to the UI thread.
-    - pick_files / pick_photo / pick_folder: native Windows file dialogs via
-      Window.create_file_dialog. The HTML <input type=file> pickers remain as
-      a browser fallback.
+    - pick_files / pick_photo / pick_folder / pick_photo_folder: native Windows
+      file dialogs via Window.create_file_dialog. The HTML <input type=file>
+      pickers remain as a browser fallback.
     """
 
     def __init__(self):
@@ -596,6 +627,54 @@ class Api:
         if not photos:
             return {"urls": [], "names": [], "index": 0, "error": "no-photos"}
         return self._pack(photos[:1], 0)
+
+    def pick_photo_folder(self):
+        """Native Open-photo-folder dialog, including nested folders."""
+        try:
+            wins = webview.windows
+            if not wins:
+                return None
+            try:
+                result = wins[0].create_file_dialog(
+                    webview.FileDialog.FOLDER, allow_multiple=True
+                )
+            except TypeError:
+                result = wins[0].create_file_dialog(webview.FileDialog.FOLDER)
+        except Exception as e:
+            _dbg("pick_photo_folder dialog FAIL %r" % (e,))
+            return None
+        raw = _normalize_dialog_result(result)
+        if not raw:
+            return None
+        paths, picked = [], []
+        for item in raw:
+            folder = pathlib.Path(item)
+            try:
+                if folder.is_dir():
+                    picked.append(str(folder))
+                    paths.extend(photo_files_in(folder, recursive=True))
+                elif folder.is_file() and folder.suffix.lower() in IMAGE_EXTS:
+                    paths.append(folder)
+            except OSError:
+                continue
+        seen, unique = set(), []
+        for path in sorted(paths, key=lambda p: str(p).casefold()):
+            try:
+                key = str(path.resolve()).casefold()
+            except OSError:
+                key = str(path).casefold()
+            if key not in seen:
+                seen.add(key)
+                unique.append(path)
+        if not unique:
+            return {
+                "urls": [],
+                "names": [],
+                "index": 0,
+                "error": "no-photos",
+                "folder": "; ".join(picked) if picked else "",
+            }
+        return self._pack(unique, 0)
 
     def pick_folder(self):
         """Native Open-folder dialog. Returns packed http urls or None.

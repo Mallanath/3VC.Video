@@ -68,8 +68,11 @@
   body.ui-hidden #showUiFab { transform:translateX(-50%) translateY(0); opacity:1; pointer-events:auto; }
   body.ui-hidden.fs-idle #showUiFab { opacity:1 !important; pointer-events:auto !important; transform:translateX(-50%) translateY(0) !important; }
   .frame { width:100%; height:100%; flex:1; overflow:hidden; background:#000; border:0; outline:0; line-height:0; font-size:0; margin:0; padding:0; }
-  .col video, .col img { width:calc(100% + 4px); height:calc(100% + 4px); margin:-2px 0 0 -2px; object-fit:cover; object-position:center center; display:block; background:#000; border:0; outline:0; vertical-align:top; padding:0; box-shadow:none; image-rendering:auto; }
-  .col img { display:none; }
+  .col video, .col img { width:100%; height:100%; display:block; background:#000; border:0; outline:0; vertical-align:top; padding:0; box-shadow:none; }
+  .col video { width:calc(100% + 4px); height:calc(100% + 4px); margin:-2px 0 0 -2px; object-fit:cover; object-position:center center; image-rendering:auto; }
+  .col img { display:none; object-fit:cover; object-position:center center; image-rendering:auto; }
+  body:not(.single-mode) .col img { width:calc(100% + 4px); height:calc(100% + 4px); margin:-2px 0 0 -2px; }
+  body.single-mode .col img { width:100%; height:100%; margin:0; object-fit:contain; }
   body.photo-mode .col video { display:none; }
   body.photo-mode .col img { display:block; }
 
@@ -82,7 +85,7 @@
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-family:var(--font); }
   .transport-row { display:grid; grid-template-columns:auto minmax(180px,1fr) minmax(100px,min(24vw,300px)); gap:14px; }
   body.photo-mode #playBtn, body.photo-mode .video-only { display:none; }
-  body.photo-mode .transport-actions, body.photo-mode #seekWrap { display:none; }
+  body.photo-mode #seekWrap, body.photo-mode #backBtn, body.photo-mode #playBtn2, body.photo-mode #fwdBtn { display:none; }
   body.photo-mode .transport-row { grid-template-columns:minmax(0,1fr); }
   body.photo-mode #nowPlaying { text-align:left; }
   .transport-actions { display:flex; align-items:center; gap:5px; }
@@ -176,9 +179,11 @@
     <div class="toolbar-group">
       <button id="openFileBtn" title="Pick video file(s) — plays one after another"><span class="button-icon" aria-hidden="true">▣</span> Open video</button>
       <button id="openPhotoBtn" title="Open one photo across all three columns; source file is not re-encoded"><span class="button-icon" aria-hidden="true">▧</span> Open photo</button>
+      <button id="openPhotoFolderBtn" title="Browse photos in a folder and its subfolders."><span class="button-icon" aria-hidden="true">▱</span> Open photo folder</button>
       <button id="openFolderBtn" title="Choose a folder to queue all videos inside it, including subfolders."><span class="button-icon" aria-hidden="true">▱</span> Open folder</button>
       <input id="file" type="file" accept="video/*" multiple hidden />
       <input id="photoFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/avif" hidden />
+      <input id="photoFolderInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/avif" webkitdirectory multiple hidden />
       <input id="folderInput" type="file" webkitdirectory multiple hidden />
     </div>
     <span class="toolbar-divider" role="separator"></span>
@@ -257,10 +262,11 @@
         <span class="preview-pane"></span><span class="preview-pane"></span><span class="preview-pane"></span>
       </div>
       <div class="empty-title">Your three-screen player is ready</div>
-      <div class="empty-sub">Open a video to watch it across three synchronized views, or open one photo to display the same original in all three columns.</div>
+      <div class="empty-sub">Open a video for three synchronized views, a photo to show its full frame, or a photo folder to browse its images.</div>
       <div class="empty-actions">
         <button id="emptyOpenFileBtn" class="primary" type="button">Open video</button>
         <button id="emptyOpenPhotoBtn" type="button">Open photo</button>
+        <button id="emptyOpenPhotoFolderBtn" type="button">Open photo folder</button>
         <button id="emptyOpenFolderBtn" type="button">Open folder</button>
       </div>
       <div class="empty-hint">Tip: press F for fullscreen · drop a video or photo here to open</div>
@@ -312,6 +318,7 @@
   const master = vids[0];
   const fileInput = document.getElementById('file');
   const photoFileInput = document.getElementById('photoFile');
+  const photoFolderInput = document.getElementById('photoFolderInput');
   const playBtn = document.getElementById('playBtn');
   const playBtn2 = document.getElementById('playBtn2');
   const syncBtn = document.getElementById('syncBtn');
@@ -327,6 +334,7 @@
   const stage = document.getElementById('stage');
   const openFileBtn = document.getElementById('openFileBtn');
   const openPhotoBtn = document.getElementById('openPhotoBtn');
+  const openPhotoFolderBtn = document.getElementById('openPhotoFolderBtn');
   const openFolderBtn = document.getElementById('openFolderBtn');
   const prevBtn = document.getElementById('prevBtn');
   const nextBtn = document.getElementById('nextBtn');
@@ -336,8 +344,10 @@
   const modeBadge = document.getElementById('modeBadge');
   const toastEl = document.getElementById('toast');
   let objectUrl = null, seeking = false, loaded = false;
-  let blobUrls = [], photoBlobUrl = null, imageMode = false;
+  let blobUrls = [], photoBlobUrls = [], imageMode = false;
   let playlist = [], playNames = [], pIndex = 0;
+  let photoPlaylist = [], photoNames = [], photoIndex = 0;
+  let videoFit = fitSel.value;
 
   function toast(msg, ms) {
     toastEl.textContent = msg;
@@ -357,7 +367,7 @@
     fitSel.disabled = single;
     // Fit-only display adjustment. Sources, timestamps, playback rates,
     // decoders and crop transforms are untouched by switching layouts.
-    const fit = single ? 'contain' : fitSel.value;
+    const fit = single ? 'contain' : (imageMode ? fitSel.value : videoFit);
     vids.concat(imgs).forEach(el => { el.style.objectFit = fit; });
   }
   mode3vcBtn.addEventListener('click', () => setPlayerMode('3vc'));
@@ -445,6 +455,7 @@
   });
 
   function clearPhotoView() {
+    const wasPhotoMode = imageMode;
     imageMode = false;
     document.body.classList.remove('photo-mode');
     imgs.forEach(img => {
@@ -452,12 +463,49 @@
       img.onerror = null;
       img.removeAttribute('src');
     });
-    if (photoBlobUrl) {
-      try { URL.revokeObjectURL(photoBlobUrl); } catch(e) {}
-      photoBlobUrl = null;
+    photoBlobUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch(e){} });
+    photoBlobUrls = [];
+    photoPlaylist = []; photoNames = []; photoIndex = 0;
+    if (wasPhotoMode) {
+      fitSel.value = videoFit;
+      const videoDisplayFit = document.body.classList.contains('single-mode') ? 'contain' : videoFit;
+      vids.forEach(v => { v.style.objectFit = videoDisplayFit; });
     }
   }
-  function loadPhotoUrl(url, name, ownedBlobUrl) {
+  function showCurrentPhoto() {
+    if (!photoPlaylist.length) return;
+    imageMode = true;
+    document.body.classList.add('photo-mode');
+    loaded = false;
+    const activeIndex = photoIndex;
+    const url = photoPlaylist[activeIndex];
+    const name = photoNames[activeIndex] || 'Photo';
+    const position = photoPlaylist.length > 1 ? `${activeIndex + 1}/${photoPlaylist.length} · ` : '';
+    playBtn.disabled = true;
+    syncBtn.disabled = true;
+    seek.disabled = true;
+    seek.value = 0;
+    timeEl.textContent = photoPlaylist.length > 1 ? `Photo ${activeIndex + 1} of ${photoPlaylist.length}` : 'Still image';
+    nowPlaying.textContent = position + name;
+    syncState.textContent = `Loading original photo ${activeIndex + 1} of ${photoPlaylist.length}…`;
+    document.getElementById('drop').classList.add('hide');
+    const fit = document.body.classList.contains('single-mode') ? 'contain' : fitSel.value;
+    imgs.forEach((img, i) => {
+      img.style.objectFit = fit;
+      img.onerror = () => {
+        if (imageMode && photoIndex === activeIndex && i === 0 && img.getAttribute('src') === url)
+          toast('Could not open this photo. Try JPEG, PNG, WebP, GIF, BMP, or AVIF.', 6000);
+      };
+      img.onload = () => {
+        if (imageMode && photoIndex === activeIndex && i === 0 && img.getAttribute('src') === url)
+          syncState.textContent = `${position}${name} · ${img.naturalWidth} × ${img.naturalHeight} px · original file`;
+      };
+      img.src = url;
+    });
+    updatePrevNext();
+  }
+  function setPhotoPlaylist(urls, names, index, ownedUrls) {
+    if (!urls || !urls.length) return;
     blobUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch(e){} });
     blobUrls = [];
     if (objectUrl) { try { URL.revokeObjectURL(objectUrl); } catch(e){} }
@@ -465,35 +513,20 @@
     clearPhotoView();
     vids.forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); });
     playlist = []; playNames = []; pIndex = 0;
-    updatePrevNext();
+    photoPlaylist = urls.slice();
+    photoNames = (names || []).slice();
+    photoIndex = Math.max(0, Math.min(index || 0, photoPlaylist.length - 1));
+    photoBlobUrls = (ownedUrls || []).slice();
+    fitSel.value = videoFit;
     imageMode = true;
-    loaded = false;
-    if (ownedBlobUrl) photoBlobUrl = ownedBlobUrl;
-    document.body.classList.add('photo-mode');
-    playBtn.disabled = true;
-    syncBtn.disabled = true;
-    seek.disabled = true;
-    seek.value = 0;
-    timeEl.textContent = 'Still image';
-    nowPlaying.textContent = name || 'Photo';
-    syncState.textContent = 'Loading original photo…';
-    document.getElementById('drop').classList.add('hide');
-    const fit = document.body.classList.contains('single-mode') ? 'contain' : fitSel.value;
-    imgs.forEach((img, i) => {
-      img.style.objectFit = fit;
-      img.onerror = () => {
-        if (imageMode && i === 0 && img.getAttribute('src') === url)
-          toast('Could not open this photo. Try JPEG, PNG, WebP, GIF, BMP, or AVIF.', 6000);
-      };
-      img.onload = () => {
-        if (imageMode && i === 0 && img.getAttribute('src') === url)
-          syncState.textContent = `${name || 'Photo'} · ${img.naturalWidth} × ${img.naturalHeight} px · original file`;
-      };
-      img.src = url;
-    });
+    showCurrentPhoto();
+  }
+  function loadPhotoUrl(url, name, ownedBlobUrl) {
+    setPhotoPlaylist([url], [name || 'Photo'], 0, ownedBlobUrl ? [ownedBlobUrl] : []);
   }
   function loadUrl(url, name) {
     clearPhotoView();
+    updatePrevNext();
     vids.forEach(v => { v.src = url; v.load(); });
     loaded = true;
     seek.disabled = false;
@@ -511,18 +544,33 @@
     loadUrl(playlist[pIndex], playNames[pIndex]);
   }
   function updatePrevNext() {
-    const multi = playlist.length > 1;
+    const isPhoto = imageMode;
+    const count = isPhoto ? photoPlaylist.length : playlist.length;
+    const index = isPhoto ? photoIndex : pIndex;
+    const kind = isPhoto ? 'photo' : 'video';
+    const multi = count > 1;
+    const hint = isPhoto ? 'open a photo folder or select multiple photos' : 'open a folder or select multiple videos';
     prevBtn.disabled = nextBtn.disabled = !multi;
-    const tip = multi ? `Previous video (P) — ${pIndex + 1}/${playlist.length}` : 'Previous video (P) — open a folder or select multiple videos to enable';
-    prevBtn.title = tip;
-    nextBtn.title = multi ? `Next video (N) — ${pIndex + 1}/${playlist.length}` : 'Next video (N) — open a folder or select multiple videos to enable';
+    prevBtn.title = multi ? `Previous ${kind} (P) — ${index + 1}/${count}` : `Previous ${kind} (P) — ${hint} to enable`;
+    nextBtn.title = multi ? `Next ${kind} (N) — ${index + 1}/${count}` : `Next ${kind} (N) — ${hint} to enable`;
+    prevBtn.setAttribute('aria-label', `Previous ${kind}`);
+    nextBtn.setAttribute('aria-label', `Next ${kind}`);
   }
   function setPlaylist(urls, names, idx) {
     playlist = urls.slice(); playNames = (names || []).slice(); pIndex = idx || 0;
     updatePrevNext();
     loadCurrent();
   }
-  function stepVideo(dir) {
+  function stepMedia(dir) {
+    if (imageMode) {
+      if (photoPlaylist.length < 2) {
+        toast(photoPlaylist.length ? 'Only 1 photo in the queue — open a photo folder or select multiple photos to browse.' : 'No photo loaded — open a photo first.', 3500);
+        return;
+      }
+      photoIndex = (photoIndex + dir + photoPlaylist.length) % photoPlaylist.length;
+      showCurrentPhoto();
+      return;
+    }
     if (playlist.length < 2) {
       toast(playlist.length ? 'Only 1 video in the queue — “Open folder” or select multiple videos to use ⏮ ⏭.' : 'No video loaded — open a video first.', 3500);
       return;
@@ -531,8 +579,8 @@
     updatePrevNext();
     loadCurrent();
   }
-  prevBtn.onclick = () => stepVideo(-1);
-  nextBtn.onclick = () => stepVideo(1);
+  prevBtn.onclick = () => stepMedia(-1);
+  nextBtn.onclick = () => stepMedia(1);
   updatePrevNext();
 
   // Desktop app bridge: true window fullscreen + startup files from Python.
@@ -558,6 +606,15 @@
     const url = URL.createObjectURL(file);
     loadPhotoUrl(url, file.name, url);
   }
+  function queuePhotos(files, labelKey) {
+    const photos = files.filter(isPhotoFile);
+    if (!photos.length) { toast('No supported photos found in that folder (subfolders included).', 5000); return; }
+    photos.sort((a, b) => String(a[labelKey] || a.name).localeCompare(String(b[labelKey] || b.name)));
+    const urls = photos.map(file => URL.createObjectURL(file));
+    const names = photos.map(file => String(file[labelKey] || file.name));
+    setPhotoPlaylist(urls, names, 0, urls);
+    if (urls.length > 1) toast(`Loaded ${urls.length} photos — use ⏮ ⏭ or N / P to browse.`, 4000);
+  }
   function queueFiles(files, labelKey) {
     const vids = files.filter(isVideoFile);
     if (!vids.length) { toast('No playable video files there. Best: MP4 / WebM / MOV.', 4000); return; }
@@ -576,10 +633,11 @@
   function announceQueue(urls) {
     if (urls && urls.length > 1) toast(`Queued ${urls.length} videos — advancing automatically. ⏮ ⏭ / N / P to skip.`, 3500);
   }
-  function supportsDirPick() {
+  function supportsDirPick(inputEl) {
     try {
+      const target = inputEl || folderInput;
       const t = document.createElement('input');
-      return ('webkitdirectory' in t) || ('webkitdirectory' in folderInput);
+      return ('webkitdirectory' in t) || ('webkitdirectory' in target);
     } catch(e) { return false; }
   }
   async function openFilePicker() {
@@ -600,7 +658,7 @@
       try {
         const r = await api.pick_photo();
         if (r && r.urls && r.urls.length) {
-          loadPhotoUrl(r.urls[0], r.names[0] || 'Photo');
+          setPhotoPlaylist(r.urls.slice(0, 1), [r.names[0] || 'Photo'], 0);
           return;
         }
         if (r && r.error === 'no-photos') {
@@ -610,6 +668,28 @@
       } catch(e) {}
     }
     photoFileInput.click();
+  }
+  async function openPhotoFolderPicker() {
+    if (supportsDirPick(photoFolderInput)) {
+      try { photoFolderInput.click(); return; } catch(e) {}
+    }
+    const api = appApi();
+    if (api && api.pick_photo_folder) {
+      try {
+        const r = await api.pick_photo_folder();
+        if (r && r.urls && r.urls.length) {
+          setPhotoPlaylist(r.urls, r.names, r.index || 0);
+          if (r.urls.length > 1) toast(`Loaded ${r.urls.length} photos — use ⏮ ⏭ or N / P to browse.`, 4000);
+          return;
+        }
+        if (r && r.error === 'no-photos') {
+          toast('No supported photos found in that folder (subfolders included).', 5000);
+        }
+        return; // native picker cancelled or contained no supported photo
+      } catch(e) {}
+    }
+    photoFileInput.click();
+    toast('Folder picking is not supported here — choose photo files instead.', 4000);
   }
   async function openFolderPicker() {
     if (supportsDirPick()) {
@@ -635,13 +715,19 @@
   }
   openFileBtn.onclick = openFilePicker;
   openPhotoBtn.onclick = openPhotoPicker;
+  openPhotoFolderBtn.onclick = openPhotoFolderPicker;
   openFolderBtn.onclick = openFolderPicker;
   document.getElementById('emptyOpenFileBtn').onclick = openFilePicker;
   document.getElementById('emptyOpenPhotoBtn').onclick = openPhotoPicker;
+  document.getElementById('emptyOpenPhotoFolderBtn').onclick = openPhotoFolderPicker;
   document.getElementById('emptyOpenFolderBtn').onclick = openFolderPicker;
   folderInput.addEventListener('change', e => {
     if (e.target.files.length) queueFiles(Array.from(e.target.files), 'webkitRelativePath');
     folderInput.value = '';
+  });
+  photoFolderInput.addEventListener('change', e => {
+    if (e.target.files.length) queuePhotos(Array.from(e.target.files), 'webkitRelativePath');
+    photoFolderInput.value = '';
   });
   window.addEventListener('pywebviewready', async () => {
     try {
@@ -808,11 +894,12 @@
     if (e.key === 'Escape' && document.body.classList.contains('is-fs')) {
       e.preventDefault(); toggleFullscreen(); return;
     }
-    if ((e.key === 'n' || e.key === 'N') && !typing && playlist.length > 1) {
-      e.preventDefault(); stepVideo(1); return;
+    const queueLength = imageMode ? photoPlaylist.length : playlist.length;
+    if ((e.key === 'n' || e.key === 'N') && !typing && queueLength > 1) {
+      e.preventDefault(); stepMedia(1); return;
     }
-    if ((e.key === 'p' || e.key === 'P') && !typing && playlist.length > 1) {
-      e.preventDefault(); stepVideo(-1); return;
+    if ((e.key === 'p' || e.key === 'P') && !typing && queueLength > 1) {
+      e.preventDefault(); stepMedia(-1); return;
     }
     if (e.code === 'Space' && loaded && !typing) {
       e.preventDefault(); togglePlay();
@@ -828,7 +915,13 @@
   });
   seek.addEventListener('change', () => { seeking = false; hardSync(); });
 
-  fitSel.addEventListener('change', () => vids.concat(imgs).forEach(el => el.style.objectFit = fitSel.value));
+  fitSel.addEventListener('change', () => {
+    if (imageMode) imgs.forEach(img => { img.style.objectFit = fitSel.value; });
+    else {
+      videoFit = fitSel.value;
+      vids.forEach(video => { video.style.objectFit = videoFit; });
+    }
+  });
   speedSel.addEventListener('change', () => {
     const r = parseFloat(speedSel.value) || 1;
     master.playbackRate = r;
